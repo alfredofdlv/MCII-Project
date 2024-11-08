@@ -31,20 +31,35 @@ def get_features(direction):
     return features
 
 def generate_train_set(train=8):
-    # Generar una lista de números del 1 al 10, para mirar que fold nos quedamos 
-    numberoffolds = list(range(1, 11))
-    # Seleccionar aleatoriamente 8 números sin repetición para fold de train
-    l_train = random.sample(numberoffolds, train)
-    # Encontrar los números que no están en lista1
-    l_test = [num for num in numberoffolds if num not in l_train]
+    """
+    Generates a train-test split of folds.
+
+    Parameters:
+    train_size (int): Number of folds to be used for training (default is 8).
+
+    Returns:
+    tuple: Lists containing the training and testing folds.
+    """
+    all_folds = list(range(1, 11))  # Folds numbered from 1 to 10
+    train_folds = random.sample(all_folds, train)
+    test_folds = [fold for fold in all_folds if fold not in train_folds]
     
-    return l_train, l_test
+    return train_folds, test_folds
 
 
 def create_dataset(directory_audio,df,train,test): 
-    '''
-    Creates a dataset for the NN Models
-    '''
+    """
+    Creates the dataset for training and testing neural network models.
+    
+    Parameters:
+    audio_directory (str or Path): Directory containing the audio files.
+    metadata_df (DataFrame): DataFrame containing metadata for the audio files (must include 'slice_file_name', 'fold', 'classID').
+    train_folds (list): List of fold numbers to be used for training.
+    test_folds (list): List of fold numbers to be used for testing.
+    
+    Returns:
+    tuple: Scaled feature arrays and corresponding labels for training and testing datasets.
+    """
 
     directory_audio=Path(directory_audio)
     train_features = []
@@ -60,10 +75,10 @@ def create_dataset(directory_audio,df,train,test):
             #Getting the features list via the get_features function  
             feat=get_features(file)
             if fold in train:
-                y_train.append(df.loc[df['slice_file_name'] == file.name, 'classID'])
+                y_train.append(df.loc[df['slice_file_name'] == file.name, 'class'])
                 train_features.append(feat)
             else: 
-                y_test.append(df.loc[df['slice_file_name'] == file.name, 'classID'])
+                y_test.append(df.loc[df['slice_file_name'] == file.name, 'class'])
                 test_features.append(feat)
     
     train_features_com=np.vstack(train_features)
