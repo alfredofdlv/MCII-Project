@@ -6,7 +6,20 @@ import os
 from pathlib import Path
 from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
+
 def get_features(direction):
+
+    """
+    Extracts a comprehensive set of audio features from a given audio file.
+    
+    Parameters
+    ----------
+
+    direction (str or Path): Path to the audio file.
+
+    Returns:
+    np.ndarray: Concatenated feature array for the given audio file.
+    """
 
     y,sr=librosa.load(direction)
 
@@ -16,6 +29,8 @@ def get_features(direction):
 
     mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13).T
     
+    chroma = librosa.feature.chroma_stft(y=y, sr=sr).T
+
     spectral_centroid = librosa.feature.spectral_centroid(y=y, sr=sr).T
 
     spectral_bandwidth = librosa.feature.spectral_bandwidth(y=y, sr=sr).T
@@ -26,7 +41,9 @@ def get_features(direction):
 
     melspectrogram =librosa.feature.melspectrogram(y=y, sr=sr, n_mels=128,fmax=8000).T
 
-    features= np.concatenate((mfccs,melspectrogram,zcr,rmse,spectral_centroid,spectral_bandwidth,spectral_contrast,spectral_rolloff),axis=1)
+    tonnetz = librosa.feature.tonnetz(y=y, sr=sr).T
+
+    features= np.concatenate((mfccs,chroma,melspectrogram,zcr,rmse,spectral_centroid,spectral_bandwidth,spectral_contrast,spectral_rolloff,tonnetz),axis=1)
     
     return features
 
@@ -34,7 +51,8 @@ def generate_train_set(train=8):
     """
     Generates a train-test split of folds.
 
-    Parameters:
+    Parameters
+    
     train_size (int): Number of folds to be used for training (default is 8).
 
     Returns:
@@ -51,8 +69,10 @@ def create_dataset(directory_audio,df,train,test):
     """
     Creates the dataset for training and testing neural network models.
     
-    Parameters:
+    Parameters
+    --------
     audio_directory (str or Path): Directory containing the audio files.
+    
     metadata_df (DataFrame): DataFrame containing metadata for the audio files (must include 'slice_file_name', 'fold', 'classID').
     train_folds (list): List of fold numbers to be used for training.
     test_folds (list): List of fold numbers to be used for testing.
@@ -81,10 +101,7 @@ def create_dataset(directory_audio,df,train,test):
                 y_test.append(df.loc[df['slice_file_name'] == file.name, 'class'])
                 test_features.append(feat)
     
-    # Antes del escalamiento
-    plt.hist(train_features[:, 0], bins=20)  # Selecciona una característica para visualizar
-    plt.title('Distribución antes del escalamiento')
-    plt.show()
+
 
     
     train_features_com=np.vstack(train_features)
@@ -95,6 +112,9 @@ def create_dataset(directory_audio,df,train,test):
     X_test = [scaler.transform(features) for features in test_features]
 
     return X_train,X_test,y_train,y_test
+
+
+
 
 # def extract_audio_features(filepath):
 #     """
