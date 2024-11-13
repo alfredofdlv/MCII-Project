@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-# Definición del modelo LSTM con modificaciones
 class ComplexLSTMModel(nn.Module):
     def __init__(self, input_dim, hidden_dim1, hidden_dim2, hidden_dim3, output_dim, dropout_rate=0.5):
         super(ComplexLSTMModel, self).__init__()
@@ -12,7 +11,7 @@ class ComplexLSTMModel(nn.Module):
         self.lstm2 = nn.LSTM(hidden_dim1 * 2, hidden_dim2, batch_first=True, bidirectional=False)
         
         # Capa LSTM unidireccional final
-        self.lstm3 = nn.LSTM(hidden_dim2 * 2, hidden_dim3, batch_first=True)
+        self.lstm3 = nn.LSTM(hidden_dim2, hidden_dim3, batch_first=True)
         
         # Capas densas
         self.fc1 = nn.Linear(hidden_dim3, 128)
@@ -36,7 +35,6 @@ class ComplexLSTMModel(nn.Module):
         x = self.fc3(x)
         
         return x
-    
 
 
 class ComplexGRUModel(nn.Module):
