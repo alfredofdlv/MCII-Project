@@ -6,339 +6,120 @@ import os
 from pathlib import Path
 from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
-from scipy.stats import skew, kurtosis
-from sklearn.preprocessing import LabelEncoder
-from tensorflow.keras.preprocessing.sequence import pad_sequences
-from tensorflow.keras.utils import to_categorical
 import numpy as np
 
-def preprocess_data(X_train, X_test, y_train, y_test):
-    """
-    Preprocesa los datos de entrada y las etiquetas para su uso en modelos de aprendizaje profundo.
-    
-    Parámetros:
-        X_train (list or np.ndarray): Secuencias de entrenamiento.
-        X_test (list or np.ndarray): Secuencias de prueba.
-        y_train (list or np.ndarray): Etiquetas de entrenamiento.
-        y_test (list or np.ndarray): Etiquetas de prueba.
-    
-    Devuelve:
-        tuple: (X_train_padded, X_test_padded, y_train_one_hot, y_test_one_hot, label_encoder, max_timesteps)
-    """
-    # Calcular las longitudes de las secuencias en el conjunto de entrenamiento
-    sequence_lengths = [len(seq) for seq in X_train]
-    
-    # Crear el codificador de etiquetas
-    label_encoder = LabelEncoder()
-    
-    # Ajustar y transformar las etiquetas de entrenamiento
-    y_train_numeric = label_encoder.fit_transform(y_train)
-    
-    # Transformar las etiquetas de prueba usando el mismo codificador
-    y_test_numeric = label_encoder.transform(y_test)
-    
-    # Imprimir las clases asignadas
-    print("Clases:", label_encoder.classes_)
-    
-    # Definir la longitud máxima deseada (máximo de las longitudes de las secuencias)
-    max_timesteps = max(sequence_lengths)  # Ajustar si es necesario
-    
-    # Aplicar padding a las secuencias
-    X_train_padded = pad_sequences(X_train, maxlen = max_timesteps, padding='post', dtype='float32')
-    X_test_padded = pad_sequences(X_test, maxlen = max_timesteps, padding='post', dtype='float32')
-    
-    # Verificar las dimensiones de los datos después del padding
-    print("Forma de X_train después de padding:", X_train_padded.shape)
-    print("Forma de X_test después de padding:", X_test_padded.shape)
-    
-    # Determinar el número de clases únicas
-    num_classes = len(np.unique(y_train))
-    
-    # Convertir las etiquetas a one-hot encoding
-    y_train_one_hot = to_categorical(y_train_numeric, num_classes=num_classes)
-    y_test_one_hot = to_categorical(y_test_numeric, num_classes=num_classes)
-    
-    return X_train_padded, X_test_padded, y_train_one_hot, y_test_one_hot, label_encoder, max_timesteps
 
-def pad_features_dynamic(features, padding_value=0, target_length=250):
-    """
-    Realiza padding o truncado para ajustar vectores a la longitud del más largo.
-
-    Parameters:
-    -----------
-    features : list of np.ndarray
-        Lista de vectores de características con diferentes longitudes.
-    padding_value : float, optional
-        Valor para rellenar las características si son más cortas que el objetivo (por defecto, 0).
-    target_length : int
-        Longitud objetivo a la que se ajustarán todas las características.
-
-    Returns:
-    --------
-    np.ndarray
-        Array de NumPy donde todas las características tienen la longitud del vector más largo.
-    """
-    padded_features = []
-    for feat in features:
-        feat = np.array(feat)  # Convertir a array por seguridad
-        if len(feat) < target_length:
-            # Rellenar con el valor especificado si la longitud es menor
-            feat = np.pad(feat, (0, target_length - len(feat)), constant_values=padding_value)
-        else:
-            # Truncar si la longitud es mayor
-            feat = feat[:target_length]
-        padded_features.append(feat)
-    
-    return np.array(padded_features)
-
-def get_features(direction,target_length = None):
-    """
-    Extrae características de un archivo de audio y las ajusta dinámicamente al tamaño máximo.
-    
-    Parameters:
-    -----------
-    direction : str
-        Ruta del archivo de audio.
-
-    Returns:
-    --------
-    np.ndarray
-        Matriz de características ajustada dinámicamente a la longitud del vector más largo.
-    """
+def get_zerocr(direction)  :
     # Cargar el archivo de audio
-    y, sr = librosa.load(direction, sr = 1600)
-
-    # Parámetros de extracción
+    y, sr = librosa.load(direction, sr = 22050)
+    # # Parámetros de extracción
     frame_length = int(sr * 0.0232)  # Ventana de 23.2 ms en muestras
     hop_length = frame_length // 2   # 50% de superposición
-
+    # mel_spectrogram = librosa.feature.melspectrogram(
+    #     y=y, sr=sr, n_mels=40, hop_length=hop_length, n_fft=frame_length, fmax=sr // 2
+    # ).T
+    # mel_spectrogram = librosa.power_to_db(mel_spectrogram, ref=np.max)
     # Calcular características
-    """
     zcr = librosa.feature.zero_crossing_rate(y=y, hop_length=hop_length).T
     rmse = librosa.feature.rms(y=y, hop_length=hop_length).T
+    # spectral_centroid = librosa.feature.spectral_centroid(y=y, sr=sr, hop_length=hop_length).T
+    # spectral_bandwidth = librosa.feature.spectral_bandwidth(y=y, sr=sr, hop_length=hop_length).T
+    # spectral_contrast = librosa.feature.spectral_contrast(y=y, sr=sr, hop_length=hop_length).T
+    # spectral_rolloff = librosa.feature.spectral_rolloff(y=y, sr=sr, hop_length=hop_length).T
+    # mel_spectrogram = librosa.feature.melspectrogram(
+    #     y=y, sr=sr, n_mels=40, hop_length=hop_length, n_fft=frame_length, fmax=sr // 2
+    # ).T
+    return np.concatenate([zcr,rmse], axis=1)
+
+def repeat_sound(numpy_list_concatenation, aimed_duration=4, sr=22050, hop_length=512):
+    # Duración en segundos de cada ventana
+    frame_duration = hop_length / sr
+    # Duración total del array original
+    original_duration = frame_duration * numpy_list_concatenation.shape[0]
+    # Número de repeticiones necesarias para alcanzar la duración deseada
+    repetitions = int(np.ceil(aimed_duration / original_duration))
+    
+    # Repetir las características para alcanzar la duración deseada
+    repeated_array = np.tile(numpy_list_concatenation, (repetitions, 1))
+    
+    # Recortar al tamaño exacto
+    required_frames = int(aimed_duration / frame_duration)
+    final_array = repeated_array[:required_frames]
+    
+    return final_array
+
+def extract_data_and_folds(audio_directory, metadata_df, aimed_duration=4):
     """
-    mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=25, hop_length=hop_length, n_fft=frame_length).T
-    """
-    spectral_centroid = librosa.feature.spectral_centroid(y=y, sr=sr, hop_length=hop_length).T
-    spectral_bandwidth = librosa.feature.spectral_bandwidth(y=y, sr=sr, hop_length=hop_length).T
-    spectral_contrast = librosa.feature.spectral_contrast(y=y, sr=sr, hop_length=hop_length).T
-    spectral_rolloff = librosa.feature.spectral_rolloff(y=y, sr=sr, hop_length=hop_length).T
-    """
-    mel_spectrogram = librosa.feature.melspectrogram(
-        y=y, sr=sr, n_mels=40, hop_length=hop_length, n_fft=frame_length, fmax=sr // 2
-    ).T
-    
-    """
-    # Ajustar el ancho de la delta
-    width = min(9, mfccs.shape[1])
-    if width < 3:
-        width = 3
-    elif width % 2 == 0:
-        width -= 1
-    
-    # Calcular derivadas (delta)
-    delta_mfccs = librosa.feature.delta(mfccs, width=width).T
-    delta2_mfccs = librosa.feature.delta(mfccs, order=2, width=width).T
-    """
-    mel_specgram_norm = (mel_spectrogram - mel_spectrogram.mean()) / mel_spectrogram.std() # Noramalization
-    mfcc_norm = (mfccs - mfccs.mean()) / mfccs.std()
-    # Ajustar características dinámicamente
-    feature_list = [
-            mfccs, mel_spectrogram
-        ]
-    
-    # Calcular un target_length común
-    #if target_length is None:
-    #    target_length = max(len(feat) for feat in feature_list)
-    
-    # Aplicar padding a todas las características
-    #feature_list = [pad_features_dynamic(feat, target_length = target_length) for feat in feature_list]
-
-    # Concatenar todas las características a lo largo del eje 1
-    features = np.concatenate(feature_list, axis=1)
-
-    return features
-
-
-
-
-def compute_statistics(feature_array):
-    return {
-        'min': np.min(feature_array, axis=1),
-        'max': np.max(feature_array, axis=1),
-        'mean': np.mean(feature_array, axis=1),
-        'median': np.median(feature_array, axis=1),
-        'variance': np.var(feature_array, axis=1),
-        'skewness': skew(feature_array, axis=1, nan_policy='omit'),
-        'kurtosis': kurtosis(feature_array, axis=1, nan_policy='omit')
-    }
-
-def get_features_salomon(direction):
-    # Cargar el archivo de audio
-    y, sr = librosa.load(direction, sr=22050)
-    
-    # Extraer MFCCs con librosa (25 coeficientes)
-    mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=25, hop_length=hop_length, n_fft=frame_length)
-    
-    # Extraer espectrograma de Mel (40 bandas de Mel entre 0 y 22050 Hz)
-    mel_spectrogram = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=40, hop_length=hop_length, n_fft=frame_length, fmax=22050)
-    
-
-    # Calcular estadísticas sobre los MFCCs
-    mfcc_stats = compute_statistics(mfccs)
-    
-    # Calcular estadísticas sobre las bandas de Mel
-    mel_stats = compute_statistics(mel_spectrogram)
-    
-    delta_stats = compute_statistics(delta_mfccs)
-    delta2_stats = compute_statistics(delta2_mfccs)
-    
-    # Concatenar todas las estadísticas en un solo vector
-    features = np.concatenate(
-        (
-        mfcc_stats['min'], mfcc_stats['max'], mfcc_stats['mean'], 
-        mfcc_stats['median'], mfcc_stats['variance'], mfcc_stats['skewness'],
-        mfcc_stats['kurtosis'], mel_stats['min'], mel_stats['max'],
-        mel_stats['mean'], mel_stats['median'], mel_stats['variance'],
-        mel_stats['skewness'], mel_stats['kurtosis'], delta_stats['mean'], 
-        delta_stats['variance'], delta2_stats['mean'], delta2_stats['variance']
-        )
-    )
-    
-    # Retornar el vector de características
-    return features
-
-def generate_train_set(train=8):
-    """
-    Generates a train-test split of folds.
+    Extrae características, etiquetas y el fold de cada archivo de audio.
 
     Parameters:
-    train_size (int): Number of folds to be used for training (default is 8).
+    audio_directory (str or Path): Directorio que contiene los archivos de audio.
+    metadata_df (DataFrame): DataFrame con la metadata de los audios ('slice_file_name', 'fold', 'classID').
 
     Returns:
-    tuple: Lists containing the training and testing folds.
+    tuple: (features_list, labels_list, folds_list), donde:
+        - features_list: Lista de características extraídas de cada archivo.
+        - labels_list: Lista de etiquetas correspondientes.
+        - folds_list: Lista de folds a los que pertenece cada archivo.
     """
-    all_folds = list(range(1, 11))  # Folds numbered from 1 to 10
-    train_folds = random.sample(all_folds, train)
-    test_folds = [fold for fold in all_folds if fold not in train_folds]
-    
-    return train_folds, test_folds
-
-def create_dataset(audio_directory, metadata_df, train_folds, test_folds):
-#     """
-#     Creates the dataset for training and testing neural network models.
-
-#     Parameters:
-#     audio_directory (str or Path): Directory containing the audio files.
-#     metadata_df (DataFrame): DataFrame containing metadata for the audio files (must include 'slice_file_name', 'fold', 'classID').
-#     train_folds (list): List of fold numbers to be used for training.
-#     test_folds (list): List of fold numbers to be used for testing.
-
-#     Returns:
-#     tuple: Scaled feature arrays and corresponding labels for training and testing datasets.
-#     """
     audio_directory = Path(audio_directory)
+    features_list, labels_list, folds_list = [], [], []
+
+    for file in audio_directory.rglob("*.wav"):
+        file_name = file.name
+        
+        if file_name not in metadata_df['slice_file_name'].values:
+            continue  # Ignorar archivos sin metadata
+
+        # Obtener el fold, la etiqueta y las características
+        fold = metadata_df.loc[metadata_df['slice_file_name'] == file_name, 'fold'].iloc[0]
+        label = metadata_df.loc[metadata_df['slice_file_name'] == file_name, 'classID'].iloc[0]
+        
+        # Extraer las características
+        features = repeat_sound(get_zerocr(file), aimed_duration=aimed_duration)  # Repetir y ajustar duración
+        
+        features_list.append(features)
+        labels_list.append(label)
+        folds_list.append(fold)
+    
+    return features_list, labels_list, folds_list
+
+def prepare_datasets(features_list, labels_list, folds_list, train_folds, test_folds):
+    """
+    Crea conjuntos de datos de entrenamiento y prueba según los folds especificados.
+
+    Parameters:
+    features_list (list): Lista de características extraídas.
+    labels_list (list): Lista de etiquetas correspondientes.
+    folds_list (list): Lista de folds asociados a cada archivo.
+    train_folds (list): Lista de números de folds a usar para entrenamiento.
+    test_folds (list): Lista de números de folds a usar para prueba.
+
+    Returns:
+    tuple: (X_train, X_test, y_train, y_test) donde:
+        - X_train, X_test: Listas escaladas de características para entrenamiento y prueba.
+        - y_train, y_test: Listas de etiquetas para entrenamiento y prueba.
+    """
+    # Dividir en conjuntos de entrenamiento y prueba
     train_features, test_features = [], []
     y_train, y_test = [], []
 
-    #     # Extract features for each audio file
-    for file in audio_directory.rglob("*.wav"):
-        fold = metadata_df.loc[metadata_df['slice_file_name'] == file.name, 'fold'].iloc[0]
-        features = get_features(file)
-
+    for features, label, fold in zip(features_list, labels_list, folds_list):
         if fold in train_folds:
-            y_train.append(metadata_df.loc[metadata_df['slice_file_name'] == file.name, 'class'].iloc[0])
             train_features.append(features)
-        
-        else:
-            y_test.append(metadata_df.loc[metadata_df['slice_file_name'] == file.name, 'class'].iloc[0])
+            y_train.append(label)
+        elif fold in test_folds:
             test_features.append(features)
+            y_test.append(label)
 
-    # Scaling features
+    # Asegurarse de que todas las características tienen la misma forma
     train_features_combined = np.vstack(train_features)
     scaler = StandardScaler()
     scaler.fit(train_features_combined)
 
+    # Escalar características
     X_train = [scaler.transform(features) for features in train_features]
     X_test = [scaler.transform(features) for features in test_features]
 
     return X_train, X_test, y_train, y_test
-"""
-def create_folds(directory_audio, df):
-    
-    Divide el conjunto de datos en 10 pliegues basados en la columna 'fold' del DataFrame.
-    Cada pliegue contiene características (x) y etiquetas (y).
-    
-    directory_audio = Path(directory_audio)
-    
-    # Inicializar listas para almacenar características (x) y etiquetas (y) para cada pliegue
-    x_i(globals) = [] for i in range(1,11)
-    y_i(globals) = [] for i in range(1,11)
-    
-    for file in directory_audio.rglob("*.wav"):
-        fold = df.loc[df['slice_file_name'] == file.name, 'fold'].iloc[0]
-        feat = get_features(file)
 
-        if np.any(np.isnan(feat)) or np.any(np.isinf(feat)):
-            feat = np.nan_to_num(feat, nan=0.0, posinf=1e10, neginf=-1e10)
-        
-        y_globals()[fold].append(df.loc[df['slice_file_name'] == file.name, 'class'].values[0])
-        x_globals()[fold].append(feat)
-    
-    # Escalamiento
-    scaler = StandardScaler()
-    x_i(globals())
-
-    # Convertir las listas en arreglos numpy bidimensionales
-    return [(np.array(x_folds[i]), np.array(y_folds[i])) for i in range(10)]
-"""
-
-def createXtrYtr(folds, trFolds, testFolds):
-    """
-    Genera conjuntos de entrenamiento y prueba en base a los pliegues indicados.
-    """
-    X_train, Y_train = [], []
-    X_test, Y_test = [], []
-    
-    for fold in trFolds:
-        X_train.append(folds[fold - 1][0])  # Agregar características del pliegue
-        Y_train.append(folds[fold - 1][1])  # Agregar etiquetas del pliegue
-    
-    for fold in testFolds:
-        X_test.append(folds[fold - 1][0])
-        Y_test.append(folds[fold - 1][1])
-    
-    # Concatenar los pliegues
-    X_train = np.vstack(X_train)
-    Y_train = np.concatenate(Y_train)
-    X_test = np.vstack(X_test)
-    Y_test = np.concatenate(Y_test)
-    
-    return X_train, Y_train, X_test, Y_test
-
-
-def cut_audio(audio_path, start, end, sr=None):
-    """
-    Cuts a segment from an audio file based on start and end times.
-
-    Parameters:
-    - audio_path (str): Path to the audio file.
-    - start (float): Start time in seconds.
-    - end (float): End time in seconds.
-    - sr (int, optional): Sampling rate for loading the audio. Default is None (uses original sampling rate).
-
-    Returns:
-    - segment (np.ndarray): Audio segment between start and end times.
-    - sr (int): Sampling rate of the audio.
-    """
-    # Load the full audio
-    audio, sr = librosa.load(audio_path, sr=sr)
-    
-    # Calculate start and end frames
-    start_frame = int(start * sr)
-    end_frame = int(end * sr)
-    
-    # Cut the audio segment
-    segment = audio[start_frame:end_frame]
-    
-    return segment, sr

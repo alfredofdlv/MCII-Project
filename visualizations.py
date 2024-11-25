@@ -1,4 +1,8 @@
 import matplotlib.pyplot as plt
+import os
+import librosa
+import librosa.display
+import numpy as np
 
 def plot_DL_results(
     train_accuracies,
@@ -42,5 +46,103 @@ def plot_DL_results(
     plt.legend(loc='lower right')
     plt.grid(True)
 
+    plt.tight_layout()
+    plt.show()
+
+
+
+
+def analyze_audio_features(
+    audio_path, 
+    n_mfcc=25, 
+    n_mels=40, 
+    frame_duration=0.0232, 
+    hop_overlap=0.5, 
+    fmin=1, 
+    fmax=22050
+):
+    """
+    Analyze audio features and plot them using default parameters from Essentia-inspired experiments.
+    Includes Mel Spectrogram and its Delta 1 (first derivative).
+
+    Parameters:
+        audio_path (str): Path to the audio file.
+        n_mfcc (int): Number of MFCC coefficients to compute.
+        n_mels (int): Number of Mel bands for Mel spectrogram computation.
+        frame_duration (float): Frame duration in seconds (default is 23.2 ms).
+        hop_overlap (float): Frame overlap percentage (default is 50% overlap).
+        fmin (float): Minimum frequency for Mel bands and spectral features (default is 0 Hz).
+        fmax (float): Maximum frequency for Mel bands and spectral features (default is 22050 Hz).
+    """
+    # Load the audio file
+    y, sr = librosa.load(audio_path)
+
+    # Frame size and hop length calculations
+    frame_length = int(sr * frame_duration)  # Frame duration in samples
+    hop_length = int(frame_length * hop_overlap)  # Hop length for 50% overlap
+
+    # Create a figure for plotting
+    plt.figure(figsize=(14, 12))
+
+    # **Waveform** - Display the audio waveform
+    plt.subplot(3, 3, 1)
+    librosa.display.waveshow(y, sr=sr)
+    plt.title('Waveform')
+
+    # **Zero Crossing Rate (ZCR)**
+    zero_crossing_rate = librosa.feature.zero_crossing_rate(y=y).T
+    plt.subplot(3, 3, 2)
+    plt.plot(zero_crossing_rate)
+    plt.title('Zero Crossing Rate (ZCR)')
+
+    # **Root Mean Square Energy (RMSE)**
+    root_mean_square_energy = librosa.feature.rms(y=y).T
+    plt.subplot(3, 3, 3)
+    plt.plot(root_mean_square_energy)
+    plt.title('Root Mean Square Energy (RMSE)')
+
+    # **MFCCs**
+    mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=n_mfcc, n_fft=frame_length, hop_length=hop_length, fmin=fmin, fmax=fmax)
+    plt.subplot(3, 3, 4)
+    librosa.display.specshow(mfccs, sr=sr, x_axis='time', y_axis='mel')
+    plt.colorbar()
+    plt.title('MFCCs')
+
+    # **Spectral Centroid**
+    spectral_centroid = librosa.feature.spectral_centroid(y=y, sr=sr).T
+    plt.subplot(3, 3, 5)
+    plt.plot(spectral_centroid)
+    plt.title('Spectral Centroid')
+
+    # **Spectral Bandwidth**
+    spectral_bandwidth = librosa.feature.spectral_bandwidth(y=y, sr=sr).T
+    plt.subplot(3, 3, 6)
+    plt.plot(spectral_bandwidth)
+    plt.title('Spectral Bandwidth')
+
+    # **Spectral Rolloff**
+    spectral_rolloff = librosa.feature.spectral_rolloff(y=y, sr=sr).T
+    plt.subplot(3, 3, 7)
+    plt.plot(spectral_rolloff)
+    plt.title('Spectral Rolloff')
+
+    # **Mel Spectrogram**
+    mel_spectrogram = librosa.feature.melspectrogram(
+        y=y, sr=sr, n_mels=n_mels, hop_length=hop_length, n_fft=frame_length, fmin=fmin, fmax=fmax
+    )
+    mel_spectrogram_db = librosa.power_to_db(mel_spectrogram, ref=np.max)
+    plt.subplot(3, 3, 8)
+    librosa.display.specshow(mel_spectrogram_db, sr=sr, x_axis='time', y_axis='mel')
+    plt.colorbar(format='%+2.0f dB')
+    plt.title('Mel Spectrogram')
+
+    # **Delta 1 (First Derivative) of Mel Spectrogram**
+    delta_mel_spectrogram = librosa.feature.delta(mel_spectrogram_db, order=1)
+    plt.subplot(3, 3, 9)
+    librosa.display.specshow(delta_mel_spectrogram, sr=sr, x_axis='time', y_axis='mel')
+    plt.colorbar(format='%+2.0f dB')
+    plt.title('Delta 1 of Mel Spectrogram')
+
+    # Show all the plots
     plt.tight_layout()
     plt.show()
