@@ -3,6 +3,35 @@ import os
 import librosa
 import librosa.display
 import numpy as np
+import pandas as pd
+
+
+def plot_urban_sound_slices(metadata_path=r"D:\Python_D\DeepLearningAudios\metadata\UrbanSound8K.csv"):
+    urbansound_metadata = pd.read_csv(metadata_path)
+    urbansound_metadata['duration'] = urbansound_metadata['end'] - urbansound_metadata['start']
+    total_duration = urbansound_metadata.groupby('class')['duration'].sum() / 60
+
+    urbansound_metadata['FG/BG'] = urbansound_metadata['salience'].map({1: 'FG', 2: 'BG'})
+    fg_bg_counts = urbansound_metadata.groupby(['class', 'FG/BG']).size().unstack(fill_value=0)
+
+    classes = total_duration.index.tolist()
+    fg_slices = fg_bg_counts.get('FG', [0] * len(classes)).tolist()
+    bg_slices = fg_bg_counts.get('BG', [0] * len(classes)).tolist()
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+    x = np.arange(len(classes))
+    ax.bar(x, fg_slices, label='FG', color='#d3d3d3')
+    ax.bar(x, bg_slices, bottom=fg_slices, label='BG', color='lightblue')
+
+    ax.set_title("(b) Slices per class (FG/BG)", fontsize=12)
+    ax.set_xlabel("Classes", fontsize=10)
+    ax.set_ylabel("Slices", fontsize=10)
+    ax.set_xticks(x)
+    ax.set_xticklabels(classes, rotation=45)
+    ax.legend()
+
+    plt.tight_layout()
+    plt.show()
 
 def plot_DL_results(
     train_accuracies,
@@ -146,3 +175,5 @@ def analyze_audio_features(
     # Show all the plots
     plt.tight_layout()
     plt.show()
+
+
