@@ -33,6 +33,20 @@ def plot_urban_sound_slices(metadata_path=r"D:\Python_D\DeepLearningAudios\metad
     plt.tight_layout()
     plt.show()
 
+def plot_signal_and_envelope(audio_path, frame_size=2048, hop_length=512, figsize=(10, 6)):
+    signal, sr = librosa.load(audio_path, sr=None)
+    envelope = librosa.feature.rms(y=signal, frame_length=frame_size, hop_length=hop_length)[0]
+    times = librosa.frames_to_time(range(len(envelope)), sr=sr, hop_length=hop_length, n_fft=frame_size)
+    
+    plt.figure(figsize=figsize)
+    plt.plot(np.linspace(0, len(signal) / sr, len(signal)), signal, alpha=0.5, label="Waveform")
+    plt.plot(times, envelope, color='red', label="Envelope (RMS)")
+    plt.xlabel("Time (s)")
+    plt.ylabel("Amplitude")
+    plt.title("Audio Signal and its Envelope")
+    plt.legend()
+    plt.show()
+
 def plot_DL_results(
     train_accuracies,
     valid_accuracies,

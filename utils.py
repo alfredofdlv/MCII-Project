@@ -8,6 +8,30 @@ from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
 import numpy as np
 
+def get_all_features(direction) : 
+    # Cargar el archivo de audio
+    y, sr = librosa.load(direction, sr = 22050)
+    # # Parámetros de extracción
+    frame_length = int(sr * 0.0232)  # Ventana de 23.2 ms en muestras
+    hop_length = frame_length // 2   # 50% de superposición
+    mel_spectrogram = librosa.feature.melspectrogram(
+         y=y, sr=sr, n_mels=40, hop_length=hop_length, n_fft=frame_length, fmax=sr // 2
+     ).T
+    mel_spectrogram = librosa.power_to_db(mel_spectrogram, ref=np.max)
+    # Calcular características
+    zcr = librosa.feature.zero_crossing_rate(y=y, hop_length=hop_length).T
+    rmse = librosa.feature.rms(y=y, hop_length=hop_length).T
+    spectral_centroid = librosa.feature.spectral_centroid(y=y, sr=sr, hop_length=hop_length).T
+    spectral_bandwidth = librosa.feature.spectral_bandwidth(y=y, sr=sr, hop_length=hop_length).T
+    spectral_contrast = librosa.feature.spectral_contrast(y=y, sr=sr, hop_length=hop_length).T
+    spectral_rolloff = librosa.feature.spectral_rolloff(y=y, sr=sr, hop_length=hop_length).T
+    mfccs = librosa.feature.mfcc(y=y,sr=sr,n_mfcc=25,hop_length = hop_length, n_fft = frame_length).T
+    return np.concatenate([mel_spectrogram,spectral_bandwidth,spectral_contrast,spectral_centroid,spectral_rolloff,zcr,rmse,mfccs], axis=1)
+
+def calculate_amplitude_envelope(signal, sr = 22050, frame_size=2048, hop_length=512):
+    envelope = librosa.feature.rms(y=signal, frame_length=frame_size, hop_length=hop_length)[0]
+    envelope_2d = envelope[:, np.newaxis]
+    return envelope_2d
 
 def get_zerocr(direction)  :
     # Cargar el archivo de audio
