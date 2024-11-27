@@ -13,6 +13,7 @@ from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.utils import to_categorical
 
 from utils import prepare_datasets
+import foolbox as fb
 
 
 class ComplexLSTMModel(nn.Module):
@@ -549,6 +550,11 @@ def cross_validate(
         X_train_padded, X_test_padded, y_train_one_hot, y_test_one_hot = (
             preprocess_data(X_train, X_test, y_train, y_test)
         )
+        if i==10:
+            X_train_padded_DP, X_test_padded_DP, y_train_numeric_DP, y_test_numeric_DP=X_train_padded, X_test_padded, y_train_one_hot, y_test_one_hot
+        #     train_folds, test_folds = aux_cross_validation(lap=10)  # Último pliegue
+        #     X_train, X_test, y_train, y_test = prepare_datasets(features_list, features_list, folds_list, train_folds, test_folds)
+        #     X_train_padded_DP, X_test_padded_DP, y_train_numeric_DP, y_test_numeric_DP = preprocess_data(X_train, X_test, y_train, y_test)
 
         if model_name == "GRU":
             model = ImprovedGRUModel(
@@ -558,6 +564,7 @@ def cross_validate(
                 output_dim=10,
                 dropout_rate=config["dropout_rate"],
             ).to(device)
+
 
         optimizer, criterion = create_criteria(config, model)
 
@@ -611,8 +618,9 @@ def cross_validate(
         avg_results[key] = np.mean(values)
 
     print(avg_results)
+    model.eval()
 
-    return avg_results, train_class, valid_class,results
+    return avg_results, train_class, valid_class,results,model
 
 
 if __name__ == "__main__":
