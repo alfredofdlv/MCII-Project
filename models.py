@@ -3,16 +3,122 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
+from torchsummary import summary
 
-from sklearn.metrics import accuracy_score, f1_score, recall_score,classification_report
+from sklearn.metrics import (
+    accuracy_score,
+    f1_score,
+    recall_score,
+    classification_report,
+)
 from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import GroupKFold
 
 import numpy as np
 
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.utils import to_categorical
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import (
+    Conv2D,
+    MaxPooling2D,
+    Flatten,
+    Dense,
+    Dropout,
+    BatchNormalization,
+)
+from tensorflow.keras.optimizers import Adam
+
 
 from utils import prepare_datasets
+
+
+import torch
+import torch.nn as nn
+
+import torch
+import torch.nn as nn
+
+
+class LSTMClassifier(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim, dropout_rate=0.25):
+        super(LSTMClassifier, self).__init__()
+        self.lstm = nn.LSTM(input_dim, hidden_dim, batch_first=True)
+        self.fc = nn.Linear(hidden_dim, output_dim)
+        self.dropout = nn.Dropout(dropout_rate)
+
+    def forward(self, x):
+        # Passing input through LSTM
+        lstm_out, (h_n, c_n) = self.lstm(
+            x
+        )  # lstm_out is the output tensor, h_n and c_n are hidden states
+        last_hidden_state = h_n[-1]  # Taking the last hidden state from the LSTM output
+
+        # Pass through fully connected layers
+        x = self.fc(last_hidden_state)
+        x = self.dropout(x)
+
+        return x
+
+
+class ConvLSTMClassifier(nn.Module):
+    def __init__(
+        self,
+        input_dim,
+        hidden_dim,
+        output_dim,
+        dropout_rate=0.25,
+        conv_filters=64,
+        kernel_size=3,
+    ):
+        super(ConvLSTMClassifier, self).__init__()
+
+        # Capa de convolución
+        self.conv1 = nn.Conv1d(
+            input_dim, conv_filters, kernel_size, padding=kernel_size // 2
+        )
+        self.conv2 = nn.Conv1d(
+            conv_filters, conv_filters, kernel_size, padding=kernel_size // 2
+        )
+
+        # LSTM
+        self.lstm = nn.LSTM(conv_filters, hidden_dim, batch_first=True)
+
+        # Capa totalmente conectada (fully connected)
+        self.fc = nn.Linear(hidden_dim, output_dim)
+
+        # Capa de dropout
+        self.dropout = nn.Dropout(dropout_rate)
+
+    def forward(self, x):
+        # Aplicamos las convoluciones
+        x = x.permute(
+            0, 2, 1
+        )  # Cambiamos las dimensiones para que coincidan con Conv1d (batch_size, channels, sequence_length)
+        x = self.conv1(x)  # Primera capa de convolución
+        x = torch.relu(x)
+        x = self.conv2(x)  # Segunda capa de convolución
+        x = torch.relu(x)
+
+        x = x.permute(
+            0, 2, 1
+        )  # Revertimos las dimensiones a (batch_size, sequence_length, channels) para el LSTM
+
+        # Pasamos la salida por el LSTM
+        lstm_out, (h_n, c_n) = self.lstm(
+            x
+        )  # lstm_out es el tensor de salida, h_n y c_n son los estados ocultos
+
+        # Tomamos el último estado oculto de la secuencia
+        last_hidden_state = h_n[-1]
+
+        # Pasamos a través de la capa fully connected
+        x = self.fc(last_hidden_state)
+
+        # Aplicamos dropout
+        x = self.dropout(x)
+
+        return x
 
 
 class ComplexLSTMModel(nn.Module):
@@ -23,39 +129,39 @@ class ComplexLSTMModel(nn.Module):
         hidden_dim2,
         hidden_dim3,
         output_dim,
-        dropout_rate=0.5,
+        dropout_rate=0.25,
     ):
         super(ComplexLSTMModel, self).__init__()
 
-        # Capas LSTM bidireccionales
+        # LSTM layers
         self.lstm1 = nn.LSTM(
             input_dim, hidden_dim1, batch_first=True, bidirectional=True
         )
         self.lstm2 = nn.LSTM(
             hidden_dim1 * 2, hidden_dim2, batch_first=True, bidirectional=False
         )
-
-        # Capa LSTM unidireccional final
         self.lstm3 = nn.LSTM(hidden_dim2, hidden_dim3, batch_first=True)
 
-        # Capas densas
+        # Fully connected layers
         self.fc1 = nn.Linear(hidden_dim3, 128)
         self.fc2 = nn.Linear(128, 64)
         self.fc3 = nn.Linear(64, output_dim)
 
+        # Dropout layer
         self.dropout = nn.Dropout(dropout_rate)
-        # Normalización por lotes (puedes probar eliminarla si es necesario)
+        # Batch normalization
         self.batchnorm = nn.BatchNorm1d(hidden_dim3)
 
     def forward(self, x):
-        x, _ = self.lstm1(x)
+        # Forward pass through LSTM layers
+        x, _ = self.lstm1(x)  # Extracting only the output from the tuple
         x, _ = self.lstm2(x)
         x, _ = self.lstm3(x)
 
-        # Usamos la última salida de la secuencia
-        x = self.batchnorm(x[:, -1, :])  # Normalización por lotes
+        # Using the last output of the sequence for classification
+        x = self.batchnorm(x[:, -1, :])  # Batch normalization on the last output
         x = torch.relu(self.fc1(x))
-        x = self.dropout(x)  # Dropout para evitar overfitting
+        x = self.dropout(x)
         x = torch.relu(self.fc2(x))
         x = self.fc3(x)
 
@@ -201,6 +307,48 @@ class ImprovedGRUModel(nn.Module):
         return x
 
 
+class BasicRNNModel(nn.Module):
+    def __init__(self, input_dim, hidden_dim1, hidden_dim2, output_dim, dropout_rate):
+        super(BasicRNNModel, self).__init__()
+
+        # Primera capa RNN
+        self.rnn1 = nn.RNN(input_dim, hidden_dim1, batch_first=True)
+        self.bn1 = nn.BatchNorm1d(hidden_dim1)
+        self.dropout1 = nn.Dropout(
+            dropout_rate
+        )  # Regularización después de la primera RNN
+
+        # Segunda capa RNN
+        self.rnn2 = nn.RNN(hidden_dim1, hidden_dim2, batch_first=True)
+        self.bn2 = nn.BatchNorm1d(hidden_dim2)
+        self.dropout2 = nn.Dropout(
+            dropout_rate
+        )  # Regularización después de la segunda RNN
+
+        # Capa densa final
+        self.fc1 = nn.Linear(hidden_dim2, output_dim)
+
+    def forward(self, x):
+        # Primera capa RNN
+        x, _ = self.rnn1(x)  # (batch, seq_len, hidden_dim1)
+        x = self.bn1(x.transpose(1, 2)).transpose(
+            1, 2
+        )  # BatchNorm en la dimensión de características
+        x = self.dropout1(x)
+
+        # Segunda capa RNN
+        x, _ = self.rnn2(x)  # (batch, seq_len, hidden_dim2)
+        x = self.bn2(x.transpose(1, 2)).transpose(1, 2)
+        x = self.dropout2(x)
+
+        # Tomar la última salida de la secuencia
+        x = x[:, -1, :]  # Selecciona el último estado oculto de la secuencia
+
+        # Capa completamente conectada
+        x = self.fc1(x)  # Salida sin activación (para usar con CrossEntropyLoss)
+        return x
+
+
 class GRU(nn.Module):
     def __init__(self, input_dim, hidden_dim1, hidden_dim2, output_dim):
         super(GRU, self).__init__()
@@ -230,6 +378,71 @@ class GRU(nn.Module):
 
         # Capa completamente conectada
         x = self.fc1(x)
+
+        return x
+
+
+import torch
+import torch.nn as nn
+
+
+class CRNN(nn.Module):
+    def __init__(self, num_classes=10):
+        super(CRNN, self).__init__()
+        self.conv1 = nn.Conv1d(
+            2, 32, kernel_size=3, stride=1, padding=1
+        )  # Adaptado para canales de entrada
+        self.bn1 = nn.BatchNorm1d(32)
+        self.elu1 = nn.ELU()
+        self.pool1 = nn.MaxPool1d(kernel_size=3, stride=3)
+        self.dropout1 = nn.Dropout(p=0.1)
+
+        self.conv2 = nn.Conv1d(32, 64, kernel_size=3, stride=1, padding=1)
+        self.bn2 = nn.BatchNorm1d(64)
+        self.elu2 = nn.ELU()
+        self.pool2 = nn.MaxPool1d(kernel_size=4, stride=4)
+        self.dropout2 = nn.Dropout(p=0.1)
+
+        self.conv3 = nn.Conv1d(64, 64, kernel_size=3, stride=1, padding=1)
+        self.bn3 = nn.BatchNorm1d(64)
+        self.elu3 = nn.ELU()
+        self.pool3 = nn.MaxPool1d(kernel_size=4, stride=4)
+        self.dropout3 = nn.Dropout(p=0.1)
+
+        self.lstm = nn.LSTM(
+            input_size=64, hidden_size=64, num_layers=2, batch_first=True
+        )
+
+        self.fc_dropout = nn.Dropout(p=0.3)
+        self.fc = nn.Linear(64, num_classes)
+
+    def forward(self, x):
+        # x: [batch_size, channels, features]
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.elu1(x)
+        x = self.pool1(x)
+        x = self.dropout1(x)
+
+        x = self.conv2(x)
+        x = self.bn2(x)
+        x = self.elu2(x)
+        x = self.pool2(x)
+        x = self.dropout2(x)
+
+        x = self.conv3(x)
+        x = self.bn3(x)
+        x = self.elu3(x)
+        x = self.pool3(x)
+        x = self.dropout3(x)
+
+        # Ajustar para LSTM
+        x = x.permute(0, 2, 1)  # [batch_size, sequence_length, features]
+        x, _ = self.lstm(x)
+        x = x[:, -1, :]  # Tomar la última salida de la LSTM
+
+        x = self.fc_dropout(x)
+        x = self.fc(x)
 
         return x
 
@@ -442,7 +655,7 @@ def train_model(
                         f"  Class {cls}: Precision: {metrics['precision']:.4f}, Recall: {metrics['recall']:.4f}, F1: {metrics['f1-score']:.4f}"
                     )
 
-    return metrics
+    return [metrics, valid_labels, valid_preds]
 
 
 def data_loader(
@@ -500,7 +713,12 @@ def preprocess_data(X_train, X_test, y_train, y_test, verbose=False):
     # y_train_one_hot = to_categorical(y_train_numeric, num_classes=num_classes)
     # y_test_one_hot = to_categorical(y_test_numeric, num_classes=num_classes)
 
-    return (X_train_padded, X_test_padded, y_train_numeric,y_test_numeric)#y_train_one_hot, y_test_one_hot)
+    return (
+        X_train_padded,
+        X_test_padded,
+        y_train_numeric,
+        y_test_numeric,
+    )  # y_train_one_hot, y_test_one_hot)
 
 
 def aux_cross_validation(lap, total_folds=10):
@@ -531,7 +749,8 @@ def cross_validate(
     folds_list,
     epochs=20,
     device="cpu",
-    verbose = 1,
+    verbose=1,
+    summary=False,
 ):
     """
     Función que recibe una función de entrenamiento y la ejecuta sobre un conjunto de datos para validación cruzada.
@@ -539,6 +758,7 @@ def cross_validate(
     results = []
     train_class = []
     valid_class = []
+    true_labels, pred_labels = [], []
 
     for i in range(1, 11):
 
@@ -550,7 +770,7 @@ def cross_validate(
             preprocess_data(X_train, X_test, y_train, y_test)
         )
 
-        if model_name == "GRU":
+        if model_name == "ImprovedGRUModel":
             model = ImprovedGRUModel(
                 input_dim=X_train_padded.shape[2],
                 hidden_dim1=config["hidden_dim1"],
@@ -558,6 +778,73 @@ def cross_validate(
                 output_dim=10,
                 dropout_rate=config["dropout_rate"],
             ).to(device)
+
+        elif model_name == "AttentionGRU":
+            model = AttGRUModel(
+                input_dim=X_train_padded.shape[2],
+                hidden_dim1=config["hidden_dim1"],
+                hidden_dim2=config["hidden_dim2"],
+                output_dim=10,
+                dropout_rate=config["dropout_rate"],
+            ).to(device)
+        elif model_name == "GRU":
+            model = GRU(
+                input_dim=X_train_padded.shape[2],
+                hidden_dim1=config["hidden_dim1"],
+                hidden_dim2=config["hidden_dim2"],
+                output_dim=10,
+                dropout_rate=config["dropout_rate"],
+            ).to(device)
+
+        elif model_name == "ComplexGRU":
+            model = ComplexGRUModel(
+                input_dim=X_train_padded.shape[2],
+                hidden_dim1=config["hidden_dim1"],
+                hidden_dim2=config["hidden_dim2"],
+                hidden_dim3=config["hidden_dim3"],
+                output_dim=10,
+                dropout_rate=config["dropout_rate"],
+            ).to(device)
+
+        elif model_name == "ImprovedGRU":
+            model = ImprovedGRUModel(
+                input_dim=X_train_padded.shape[2],
+                hidden_dim1=config["hidden_dim1"],
+                hidden_dim2=config["hidden_dim2"],
+                output_dim=10,
+                dropout_rate=config["dropout_rate"],
+            ).to(device)
+
+        elif model_name == "LSTM":
+            model = LSTMClassifier(
+                input_dim=X_train_padded.shape[2],
+                hidden_dim=config["hidden_dim1"],
+                output_dim=10,
+                dropout_rate=config["dropout_rate"],
+            ).to(device)
+
+        elif model_name == "CLSTM":
+            model = ConvLSTMClassifier(
+                input_dim=X_train_padded.shape[2],
+                hidden_dim=config["hidden_dim1"],
+                output_dim=10,
+                dropout_rate=config["dropout_rate"],
+            ).to(device)
+
+        elif model_name == "BasicRNN":
+            model = BasicRNNModel(
+                input_dim=X_train_padded.shape[2],
+                hidden_dim1=config["hidden_dim1"],
+                hidden_dim2=config["hidden_dim2"],
+                output_dim=10,
+                dropout_rate=config["dropout_rate"],
+            ).to(device)
+
+        elif model_name == "CRNN":
+            model = CRNN().to(device)
+
+        if i == 1 and summary:
+            summary(model, (X_train_padded.shape[1], X_train_padded.shape[2]))
 
         optimizer, criterion = create_criteria(config, model)
 
@@ -570,7 +857,7 @@ def cross_validate(
             device=device,
         )
 
-        metrics = train_model(
+        lista = train_model(
             model,
             train_loader,
             test_loader,
@@ -578,9 +865,12 @@ def cross_validate(
             optimizer,
             epochs,
             device,
-            verbose = verbose,
+            verbose=verbose,
         )
+        metrics = lista[0]
         results.append(metrics)
+        true_labels.append(lista[1])
+        pred_labels.append(lista[2])
 
     avg_metrics = {
         "train_losses": [],
@@ -612,7 +902,68 @@ def cross_validate(
 
     print(avg_results)
 
-    return avg_results, train_class, valid_class,results
+    return avg_results, train_class, valid_class, results, true_labels, pred_labels
+
+
+# 10-fold cross validation splits
+
+
+def prepare_splits(x, y, metadata, n_splits=10):
+    group_kfold = GroupKFold(n_splits=n_splits)
+    groups = metadata["fold"]
+
+    for train_idx, test_idx in group_kfold.split(x, y, groups):
+        val_idx = train_idx[: len(train_idx) // 10]
+        train_idx = train_idx[len(train_idx) // 10 :]
+
+        x_train, x_val, x_test = x[train_idx], x[val_idx], x[test_idx]
+        y_train, y_val, y_test = y[train_idx], y[val_idx], y[test_idx]
+
+        yield x_train[..., np.newaxis], x_val[..., np.newaxis], x_test[
+            ..., np.newaxis
+        ], y_train, y_val, y_test
+
+
+def new_cnn_model(input_shape=(128, 128, 1), num_classes=10):
+    model = Sequential()
+
+    # 1st conv + MaxPooling + Dropout
+    model.add(
+        Conv2D(32, kernel_size=(3, 3), activation="relu", input_shape=input_shape)
+    )
+    model.add(BatchNormalization())  # added because of overfitting
+    model.add(MaxPooling2D(pool_size=(2, 2)))
+    model.add(Dropout(0.25))
+
+    # 2nd Conv + MaxPooling + Dropout
+    model.add(Conv2D(64, kernel_size=(3, 3), activation="relu"))
+    model.add(BatchNormalization())
+    model.add(MaxPooling2D(pool_size=(2, 2)))
+    model.add(Dropout(0.4))
+
+    # 3rd Conv + MaxPooling + Dropout
+    model.add(Conv2D(64, kernel_size=(3, 3), activation="relu"))
+    model.add(BatchNormalization())
+    model.add(MaxPooling2D(pool_size=(2, 2)))
+    model.add(Dropout(0.4))
+
+    # Flattening
+    model.add(Flatten())
+
+    # Fully connected layers
+    model.add(Dense(256, activation="relu"))
+    model.add(Dropout(0.5))
+
+    # Output layer
+    model.add(Dense(num_classes, activation="softmax"))
+
+    # Compile the model
+    model.compile(
+        optimizer=Adam(learning_rate=0.001),  # Adaptive gradient optimizer
+        loss="sparse_categorical_crossentropy",
+        metrics=["accuracy"],
+    )
+    return model
 
 
 if __name__ == "__main__":

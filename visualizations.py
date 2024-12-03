@@ -4,7 +4,8 @@ import librosa
 import librosa.display
 import numpy as np
 import pandas as pd
-
+import soundfile as sf
+from utils import calculate_envelope
 
 def plot_urban_sound_slices(metadata_path=r"D:\Python_D\DeepLearningAudios\metadata\UrbanSound8K.csv"):
     urbansound_metadata = pd.read_csv(metadata_path)
@@ -33,17 +34,78 @@ def plot_urban_sound_slices(metadata_path=r"D:\Python_D\DeepLearningAudios\metad
     plt.tight_layout()
     plt.show()
 
-def plot_signal_and_envelope(audio_path, frame_size=2048, hop_length=512, figsize=(10, 6)):
-    signal, sr = librosa.load(audio_path, sr=None)
-    envelope = librosa.feature.rms(y=signal, frame_length=frame_size, hop_length=hop_length)[0]
-    times = librosa.frames_to_time(range(len(envelope)), sr=sr, hop_length=hop_length, n_fft=frame_size)
+def repeat_audio_envelope(input_path, aimed_duration=4.0, export = True,output_path='sounds'):
+    y, sr = librosa.load(input_path, sr=None)
+
+    envelope = calculate_envelope(y=y,sr=sr)
+
+    envelope_duration = len(envelope) / sr
+
+    num_repeats = int(np.ceil(aimed_duration / envelope_duration))
+
+    repeated_envelope = np.tile(envelope, num_repeats)
+
+    target_length = int(aimed_duration * sr)
+    repeated_envelope = repeated_envelope[:target_length]
+
+    repeated_audio = np.tile(y, int(np.ceil(target_length / len(y))))[:target_length]
+
+    final_audio = repeated_audio * repeated_envelope
+    if export:
+        if not os.path.exists(output_path):
+            os.makedirs(output_path)
+        filename = os.path.basename(input_path)
+        output_file_path = os.path.join(output_path, filename)
+        sf.write(output_file_path, final_audio, sr)
+
+        print(f"File {input_path} saved at {output_path}")
     
-    plt.figure(figsize=figsize)
-    plt.plot(np.linspace(0, len(signal) / sr, len(signal)), signal, alpha=0.5, label="Waveform")
-    plt.plot(times, envelope, color='red', label="Envelope (RMS)")
+    times_audio = np.arange(len(y)) / sr
+    times_envelope = np.arange(len(envelope)) / sr
+    times_repeated_envelope = np.arange(len(repeated_envelope)) / sr
+    times_final_audio = np.arange(len(final_audio)) / sr
+
+    plt.figure(figsize=(10, 6))
+
+    plt.subplot(3, 1, 1)
+    plt.plot(times_audio, y, label="Original Audio", color='blue')
+    plt.title("Original Audio Signal")
     plt.xlabel("Time (s)")
     plt.ylabel("Amplitude")
-    plt.title("Audio Signal and its Envelope")
+
+    plt.subplot(3, 1, 2)
+    plt.plot(times_repeated_envelope, repeated_envelope, label="Repeated Envelope", color='orange')
+    plt.title("Repeated Smooth Envelope")
+    plt.xlabel("Time (s)")
+    plt.ylabel("Amplitude")
+
+    plt.subplot(3, 1, 3)
+    plt.plot(times_final_audio, final_audio, label="Final Audio (Modulated)", color='green')
+    plt.title("Final Modulated Audio Signal")
+    plt.xlabel("Time (s)")
+    plt.ylabel("Amplitude")
+
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_signal_and_envelope(audio_path, frame_size=2048, hop_length=512, figsize=(10, 6)):
+    signal, sr = librosa.load(audio_path, sr=None)
+    envelope = calculate_envelope(signal, sr)
+    rms = librosa.feature.rms(y=signal, frame_length=frame_size, hop_length=hop_length)[0]
+    zcr = librosa.feature.zero_crossing_rate(y=signal, frame_length=frame_size, hop_length=hop_length)[0]
+    times_signal = np.linspace(0, len(signal) / sr, len(signal))
+    times_envelope = np.linspace(0, len(signal) / sr, len(envelope))
+    times_rms = librosa.frames_to_time(range(len(rms)), sr=sr, hop_length=hop_length)
+    times_zcr = librosa.frames_to_time(range(len(zcr)), sr=sr, hop_length=hop_length)
+    plt.figure(figsize=figsize)
+    plt.plot(times_signal, signal, alpha=0.5, label="Waveform")
+    plt.plot(times_envelope, envelope, color='red', label="Envelope (Harmonic)")
+    plt.plot(times_rms, rms, color='blue', label="RMS Energy")
+    plt.plot(times_zcr, zcr, color='green', label="Zero Crossing Rate (ZCR)")
+    plt.xlabel("Time (s)")
+    plt.ylabel("Amplitude / Rate")
+    plt.title("Audio Signal, Envelope, RMS, and ZCR")
     plt.legend()
     plt.show()
 
